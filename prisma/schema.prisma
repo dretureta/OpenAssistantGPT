@@ -17,6 +17,19 @@ model OpenAIConfig {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
+model ClientInquiries {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+
+  threadId String
+  email    String
+  name     String
+  inquiry  String
+
+  chatbotId String
+  chatbot   Chatbot @relation(fields: [chatbotId], references: [id], onDelete: Cascade)
+}
+
 model ChatbotFiles {
   id         String   @id @default(cuid())
   assignedAt DateTime @default(now())
@@ -50,9 +63,10 @@ model Chatbot {
   userReplyBackgroundColor    String @default("#3b82f6")
   userReplyTextColor          String @default("#FFFFFF")
 
-  user         User           @relation(fields: [userId], references: [id])
-  model        ChatbotModel   @relation(fields: [modelId], references: [id])
-  ChatbotFiles ChatbotFiles[]
+  user            User              @relation(fields: [userId], references: [id])
+  model           ChatbotModel      @relation(fields: [modelId], references: [id])
+  ChatbotFiles    ChatbotFiles[]
+  ClientInquiries ClientInquiries[]
 
   @@map(name: "chatbots")
 }

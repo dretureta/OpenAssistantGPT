@@ -78,11 +78,21 @@ export function Chat({ chatbot, defaultMessage, ...props }: ChatbotProps) {
           </div>
           {
             messages.map((message: Message) => {
-              if (message.role === "assistant") {
+              if (message.role === 'data') {
+                <>
+                  {/* here you would provide a custom display for your app-specific data:*/}
+                  {(message.data as any).description}
+                  <br />
+                  <pre className={'bg-gray-200'}>
+                    {JSON.stringify(message.data, null, 2)}
+                  </pre>
+                </>
+              } else if (message.role === "assistant") {
                 return (
                   <div key={message.id} className="flex items-end gap-2">
                     <div className="rounded-lg bg-zinc-200 p-2" style={{ color: config ? config.chatbotReplyTextColor : "", background: config ? config.chatbotReplyBackgroundColor : "" }}>
                       {message.content.replace(/\【\d+†source】/g, '') // Remove citation markers
+
                         .split('```').map((block, blockIdx) => {
                           // Check if the block is a code block or normal text
                           if (blockIdx % 2 === 1) {

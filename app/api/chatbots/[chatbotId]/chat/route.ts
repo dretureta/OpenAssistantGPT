@@ -5,6 +5,7 @@ import { z } from "zod"
 import { getUserSubscriptionPlan } from "@/lib/subscription";
 import { experimental_AssistantResponse } from 'ai';
 import { MessageContentText } from 'openai/resources/beta/threads/messages/messages';
+import { createClientInquiry } from "./inquiry";
 
 export const maxDuration = 300;
 
@@ -64,34 +65,37 @@ export async function POST(
             async ({ threadId, sendMessage, sendDataMessage }) => {
 
                 try {
-                    const plan = await getUserSubscriptionPlan(chatbot.userId)
-                    if (plan.unlimitedMessages === false) {
-                        const messageCount = await db.message.count({
-                            where: {
-                                userId: chatbot.userId,
-                                createdAt: {
-                                    gte: new Date(new Date().setDate(new Date().getDate() - 30))
-                                }
-                            }
-                        })
-                        console.log(`Message count: ${messageCount}`)
-                        if (messageCount >= plan.maxMessagesPerMonth!) {
-                            console.log(`Reached message limit ${chatbot.userId}`)
-                            sendMessage({
-                                id: "end",
-                                role: 'assistant',
-                                content: [{ type: 'text', text: { value: "You have reached your monthly message limit. Upgrade your plan to continue using your chatbot." } }]
-                            });
-                            return;
-                        }
-                    }
+                    // sleep for 1 second
+                    await new Promise(resolve => setTimeout(resolve, 2000));
+
+                    //const plan = await getUserSubscriptionPlan(chatbot.userId)
+                    //if (plan.unlimitedMessages === false) {
+                    //    const messageCount = await db.message.count({
+                    //        where: {
+                    //            userId: chatbot.userId,
+                    //            createdAt: {
+                    //                gte: new Date(new Date().setDate(new Date().getDate() - 30))
+                    //            }
+                    //        }
+                    //    })
+                    //    console.log(`Message count: ${messageCount}`)
+                    //    if (messageCount >= plan.maxMessagesPerMonth!) {
+                    //        console.log(`Reached message limit ${chatbot.userId}`)
+                    //        sendMessage({
+                    //            id: "end",
+                    //            role: 'assistant',
+                    //            content: [{ type: 'text', text: { value: "You have reached your monthly message limit. Upgrade your plan to continue using your chatbot." } }]
+                    //        });
+                    //        return;
+                    //    }
+                    //}
 
                     // Run the assistant on the thread
                     const run = await openai.beta.threads.runs.create(threadId, {
                         assistant_id: chatbot.openaiId,
                     });
 
-                    async function waitForRun(run: OpenAI.Beta.Threads.Runs.Run) {
+                    const waitForRun = async (run: OpenAI.Beta.Threads.Runs.Run) => {
                         // Poll for status change
                         while (run.status === 'queued' || run.status === 'in_progress') {
                             // delay for 500ms:
@@ -109,6 +113,44 @@ export async function POST(
                         ) {
                             throw new Error(run.status);
                         }
+                        if (run.status === 'requires_action') {
+                            console.log(`requires_action: ${run.id}`)
+                            if (run.required_action?.type === 'submit_tool_outputs') {
+                                const tool_outputs =
+                                    run.required_action.submit_tool_outputs.tool_calls.map(
+                                        toolCall => {
+                                            const parameters = JSON.parse(toolCall.function.arguments);
+
+                                            switch (toolCall.function.name) {
+                                                case 'create_client_inquiry': {
+
+                                                    createClientInquiry(chatbot?.id || "", threadId, parameters.name, parameters.email, parameters.inquiry)
+
+                                                    return {
+                                                        tool_call_id: toolCall.id,
+                                                        output: 'Support case opened',
+                                                    };
+
+                                                }
+
+                                                default:
+                                                    throw new Error(
+                                                        `Unknown tool call function: ${toolCall.function.name}`,
+                                                    );
+                                            }
+                                        },
+                                    );
+
+                                run = await openai.beta.threads.runs.submitToolOutputs(
+                                    threadId!,
+                                    run.id,
+                                    { tool_outputs },
+                                );
+
+                                await waitForRun(run);
+                            }
+                        }
+
                     }
 
                     await waitForRun(run);
